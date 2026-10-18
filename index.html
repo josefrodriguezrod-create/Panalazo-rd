@@ -19,7 +19,7 @@ label{font-size:13px;font-weight:800;display:block;margin-top:10px} input,select
 .row .grow{flex:1}.actions{display:flex;gap:6px}.actions button{width:auto;padding:7px 9px;font-size:12px}.danger{background:#ffeaea;color:#a22;border:0}.ok{color:#168048}.low{color:#b36b00}.hidden{display:none}
 .nav{position:fixed;left:50%;transform:translateX(-50%);bottom:max(7px,env(safe-area-inset-bottom));width:min(740px,calc(100% - 14px));display:grid;grid-template-columns:repeat(5,1fr);gap:4px;background:#fff;padding:7px;border-radius:16px;box-shadow:0 3px 22px #0002;z-index:5}.nav button{font-size:11px;padding:8px 2px;border:0;background:#eef6ff;color:var(--blue)}
 .badge{display:inline-block;padding:3px 7px;border-radius:20px;background:#fff0f6;color:#b22b67;font-size:11px;font-weight:800}.search{margin-bottom:8px}
-.clientHead{display:flex;align-items:center;justify-content:space-between;gap:8px}.clientHead h3{margin:0}
+.clientHead{display:flex;align-items:center;justify-content:space-between;gap:8px}.clientHead h3{margin:0}.comboBox{background:#fff7fb;border:1px solid #ffd3e6;padding:12px;border-radius:14px;margin-top:10px}.comboBox h3{margin:0 0 6px}.sizeGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.sizeGrid select{margin-top:0}
 @media(min-width:650px){.grid.four{grid-template-columns:repeat(4,1fr)}}
 </style>
 </head>
@@ -46,10 +46,21 @@ label{font-size:13px;font-weight:800;display:block;margin-top:10px} input,select
 
 <section id="sale" class="hidden">
 <div class="card"><h2>🛒 Registrar venta</h2>
-<label>Cliente</label><select id="saleClient"></select>
+<label>Cliente</label><select id="saleClient" onchange="renderComboSizes()"></select>
 <button class="secondary" style="margin-top:6px" onclick="go('clients');showClientForm()">+ Nuevo cliente</button>
+<label>Tipo de venta</label>
+<select id="saleType" onchange="toggleSaleType()"><option value="unit">Producto individual</option><option value="combo">Combo</option></select>
+<div id="unitSale">
 <label>Producto</label><select id="product" onchange="calcTotal()"></select>
 <label>Cantidad</label><input id="quantity" type="number" min="1" value="1" oninput="calcTotal()">
+</div>
+<div id="comboSale" class="hidden comboBox">
+<h3>🎁 Combo</h3>
+<select id="combo" onchange="renderComboSizes()"></select>
+<div id="comboDesc" class="muted" style="margin:8px 0"></div>
+<label>Talla de cada paquete de pañal</label>
+<div id="comboSizes" class="sizeGrid"></div>
+</div>
 <label>Forma de pago</label><select id="payment"><option>Efectivo</option><option>Transferencia</option><option>Fiado</option></select>
 <label>Nota</label><input id="saleNote" placeholder="Opcional">
 <div id="saleTotal" class="total"></div>
@@ -106,6 +117,12 @@ label{font-size:13px;font-weight:800;display:block;margin-top:10px} input,select
 
 <script>
 const BASE_PRODUCTS=[1,2,3,4,5,6,7].map(n=>({name:'Pañal SAEL #'+n,stock:12,cost:12100/84,price:250})).concat([{name:'Wipes SAEL con olor',stock:24,cost:100,price:125}]);
+const COMBOS=[
+{name:'Combo Quincena',diapers:2,wipes:1,price:600},
+{name:'Combo Bebé',diapers:3,wipes:1,price:800},
+{name:'Combo Ahorro',diapers:4,wipes:2,price:1100},
+{name:'Combo Pañalazo',diapers:6,wipes:2,price:1500}
+];
 let db=JSON.parse(localStorage.getItem('panalazoRDv2')||'null')||{products:BASE_PRODUCTS,sales:[],clients:[],payments:[]};
 const money=n=>'RD$'+Math.round(Number(n)||0).toLocaleString('es-DO');
 const sum=(a,f)=>a.reduce((z,x)=>z+f(x),0);
@@ -114,17 +131,46 @@ function go(id){['home','sale','clients','inventory','admin'].forEach(x=>documen
 function setupSelectors(){
  const opts=db.products.map((p,i)=>`<option value="${i}">${p.name} — ${money(p.price)}</option>`).join('');
  product.innerHTML=opts; restockProduct.innerHTML=opts;
+ combo.innerHTML=COMBOS.map((c,i)=>`<option value="${i}">${c.name} — ${money(c.price)}</option>`).join('');
  saleClient.innerHTML='<option value="">Venta sin cliente</option>'+db.clients.map(c=>`<option value="${c.id}">${esc(c.name)}${c.size?' · '+c.size:''}</option>`).join('');
- calcTotal()
+ renderComboSizes(); calcTotal()
 }
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-function calcTotal(){let p=db.products[+product.value||0]; saleTotal.textContent=money(p.price*Math.max(1,+quantity.value||1))}
+function toggleSaleType(){
+ let isCombo=saleType.value==='combo';
+ unitSale.classList.toggle('hidden',isCombo);comboSale.classList.toggle('hidden',!isCombo);
+ if(isCombo)renderComboSizes();calcTotal()
+}
+function renderComboSizes(){
+ let c=COMBOS[+combo.value||0];
+ comboDesc.textContent=`${c.diapers} paquetes de pañal + ${c.wipes} wipes`;
+ let client=db.clients.find(x=>x.id===+saleClient.value), preferred=client?.size||'#1';
+ comboSizes.innerHTML=Array.from({length:c.diapers},(_,i)=>`<select class="comboSize"><option ${preferred==='#1'?'selected':''}>#1</option><option ${preferred==='#2'?'selected':''}>#2</option><option ${preferred==='#3'?'selected':''}>#3</option><option ${preferred==='#4'?'selected':''}>#4</option><option ${preferred==='#5'?'selected':''}>#5</option><option ${preferred==='#6'?'selected':''}>#6</option><option ${preferred==='#7'?'selected':''}>#7</option></select>`).join('');
+ calcTotal()
+}
+function calcTotal(){
+ if(typeof saleType!=='undefined'&&saleType.value==='combo'){let c=COMBOS[+combo.value||0];saleTotal.textContent=money(c.price);return}
+ let p=db.products[+product.value||0]; saleTotal.textContent=money(p.price*Math.max(1,+quantity.value||1))
+}
 function registerSale(){
+ if(saleType.value==='combo')return registerCombo();
  let i=+product.value,p=db.products[i],q=Math.max(1,+quantity.value||1);
  if(q>p.stock)return alert('Solo quedan '+p.stock+' unidades.');
  p.stock-=q;
  db.sales.unshift({id:Date.now(),date:new Date().toISOString(),product:p.name,productIndex:i,qty:q,price:p.price,cost:p.cost,payment:payment.value,clientId:saleClient.value?+saleClient.value:null,note:saleNote.value});
  quantity.value=1;saleNote.value='';save();alert('✅ Venta registrada');go('home')
+}
+function registerCombo(){
+ let c=COMBOS[+combo.value||0], sizes=[...document.querySelectorAll('.comboSize')].map(x=>x.value);
+ let counts={};sizes.forEach(s=>counts[s]=(counts[s]||0)+1);
+ for(let s in counts){let idx=db.products.findIndex(p=>p.name.endsWith(s));if(idx<0||db.products[idx].stock<counts[s])return alert(`Inventario insuficiente de talla ${s}. Disponible: ${idx>=0?db.products[idx].stock:0}`)}
+ let wi=db.products.findIndex(p=>p.name.startsWith('Wipes'));if(db.products[wi].stock<c.wipes)return alert('Inventario insuficiente de wipes. Disponible: '+db.products[wi].stock);
+ let cost=0, components=[];
+ Object.entries(counts).forEach(([s,q])=>{let idx=db.products.findIndex(p=>p.name.endsWith(s));db.products[idx].stock-=q;cost+=db.products[idx].cost*q;components.push({productIndex:idx,qty:q})});
+ db.products[wi].stock-=c.wipes;cost+=db.products[wi].cost*c.wipes;components.push({productIndex:wi,qty:c.wipes});
+ let detail=sizes.map(s=>'1× '+s).join(', ')+` + ${c.wipes} Wipes`;
+ db.sales.unshift({id:Date.now(),date:new Date().toISOString(),product:c.name+' – '+detail,qty:1,price:c.price,cost,payment:payment.value,clientId:saleClient.value?+saleClient.value:null,note:saleNote.value,isCombo:true,components});
+ saleNote.value='';save();alert('✅ Combo registrado');go('home')
 }
 function showClientForm(){clientForm.classList.remove('hidden');cName.focus()}
 function hideClientForm(){clientForm.classList.add('hidden')}
@@ -148,7 +194,7 @@ function renderClients(){
  <div class="grid" style="margin-top:8px"><div><small>Compras</small><b style="display:block">${st.sales}</b></div><div><small>Total comprado</small><b style="display:block">${money(st.total)}</b></div></div>
  <div class="actions" style="margin-top:9px"><button onclick="sellTo(${c.id})">Nueva venta</button>${wa}${st.balance?`<button onclick="collect(${c.id},${st.balance})">Cobrar</button>`:''}</div></div>`}).join(''):'<div class="card muted">No hay clientes registrados.</div>'
 }
-function sellTo(id){go('sale');saleClient.value=String(id);let c=db.clients.find(x=>x.id===id);if(c?.size){let idx=db.products.findIndex(p=>p.name.endsWith(c.size));if(idx>=0)product.value=idx;calcTotal()}}
+function sellTo(id){go('sale');saleClient.value=String(id);let c=db.clients.find(x=>x.id===id);if(c?.size){let idx=db.products.findIndex(p=>p.name.endsWith(c.size));if(idx>=0)product.value=idx;renderComboSizes();calcTotal()}}
 function whatsapp(phone){let n=phone.replace(/\D/g,'');if(n.length===10)n='1'+n;window.open('https://wa.me/'+n,'_blank')}
 function collect(id,balance){let a=Number(prompt('Balance: '+money(balance)+'\\nMonto recibido:'));if(!a||a<=0)return;db.payments.unshift({id:Date.now(),clientId:id,amount:Math.min(a,balance),date:new Date().toISOString()});save()}
 function renderAll(){
@@ -165,7 +211,7 @@ function renderAll(){
 }
 function unlockAdmin(){if(pin.value==='0401'){adminLock.classList.add('hidden');adminPanel.classList.remove('hidden');renderAll()}else alert('PIN incorrecto')}
 function restock(){let i=+restockProduct.value;db.products[i].stock+=Math.max(1,+restockQty.value||1);save();alert('Inventario actualizado')}
-function voidSale(id){let s=db.sales.find(x=>x.id===id);if(s&&confirm('¿Anular esta venta?')){db.products[s.productIndex].stock+=s.qty;db.sales=db.sales.filter(x=>x.id!==id);save()}}
+function voidSale(id){let s=db.sales.find(x=>x.id===id);if(s&&confirm('¿Anular esta venta?')){if(s.isCombo&&s.components){s.components.forEach(c=>db.products[c.productIndex].stock+=c.qty)}else{db.products[s.productIndex].stock+=s.qty}db.sales=db.sales.filter(x=>x.id!==id);save()}}
 setupSelectors();renderAll();
 </script>
 </body></html>
